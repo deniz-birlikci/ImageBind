@@ -25,7 +25,7 @@ DEFAULT_AUDIO_FRAME_SHIFT_MS = 10  # in milliseconds
 from pathlib import Path
 
 current_file_path = Path(__file__)
-BPE_PATH = current_file_path.parent / ".." / "bpe" / "bpe_simple_vocab_16e6.txt.gz"
+BPE_PATH = current_file_path.parent / ".." / ".." / "bpe" / "bpe_simple_vocab_16e6.txt.gz"
 
 
 def waveform2melspec(waveform, sample_rate, num_mel_bins, target_length):
