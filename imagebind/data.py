@@ -26,7 +26,7 @@ from pathlib import Path
 
 current_file_path = Path(__file__)
 BPE_PATH = current_file_path.parent / ".." / ".." / "bpe" / "bpe_simple_vocab_16e6.txt.gz"
-
+BPE_PATH = "/usr/local/lib/python3.10/dist-packages/imagebind/bpe_simple_vocab_16e6.txt.gz"
 
 def waveform2melspec(waveform, sample_rate, num_mel_bins, target_length):
     # Based on https://github.com/YuanGongND/ast/blob/d7d8b4b8e06cdaeb6c843cdb38794c1c7692234c/src/dataloader.py#L102
