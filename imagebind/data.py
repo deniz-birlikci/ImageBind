@@ -22,12 +22,6 @@ from imagebind.models.multimodal_preprocessors import SimpleTokenizer
 
 DEFAULT_AUDIO_FRAME_SHIFT_MS = 10  # in milliseconds
 
-from pathlib import Path
-
-current_file_path = Path(__file__)
-BPE_PATH = current_file_path.parent / ".." / ".." / "bpe" / "bpe_simple_vocab_16e6.txt.gz"
-BPE_PATH = "/usr/local/lib/python3.10/dist-packages/imagebind/bpe_simple_vocab_16e6.txt.gz"
-
 def waveform2melspec(waveform, sample_rate, num_mel_bins, target_length):
     # Based on https://github.com/YuanGongND/ast/blob/d7d8b4b8e06cdaeb6c843cdb38794c1c7692234c/src/dataloader.py#L102
     waveform -= waveform.mean()
@@ -105,10 +99,10 @@ def load_and_transform_vision_data(image_paths, device):
     return torch.stack(image_outputs, dim=0)
 
 
-def load_and_transform_text(text, device):
+def load_and_transform_text(text, device, bpe_path):
     if text is None:
         return None
-    tokenizer = SimpleTokenizer(bpe_path=BPE_PATH)
+    tokenizer = SimpleTokenizer(bpe_path=bpe_path)
     tokens = [tokenizer(t).unsqueeze(0).to(device) for t in text]
     tokens = torch.cat(tokens, dim=0)
     return tokens
