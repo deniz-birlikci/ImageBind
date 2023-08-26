@@ -582,9 +582,23 @@ class SerializableImageBindModel(ImageBindModel):
         return inputs
     
     def forward(self, json_serializable_input: dict[str, ...]):
+        # Make sure that the json_serializable_input is the right format
         self.validate_serializable_input(json_serializable_input)
+        
+        # Convert inputs to torch
         torch_inputs = self.format_input_to_torch(json_serializable_input)
-        return super().forward(torch_inputs)
+        
+        # Run the model
+        model_output = super().forward(torch_inputs)
+        
+        # Delete the inputs and clear GPU cache
+        del torch_inputs
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        
+        # Return the model output finally
+        return model_output
+        
         
 
 def imagebind_huge(pretrained=False):
