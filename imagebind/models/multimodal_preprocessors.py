@@ -9,6 +9,7 @@ import gzip
 import html
 import io
 import math
+import requests
 from functools import lru_cache
 from typing import Callable, List, Optional, Tuple
 
@@ -495,13 +496,40 @@ def whitespace_clean(text):
 
 
 class SimpleTokenizer(object):
-    def __init__(self, bpe_path: str, context_length=77):
+    def __init__(self, bpe_binary: bytes, context_length=77):
+        """
+        Initializes the model by reading the BPE (Byte-Pair Encoding) binary data provided.
+
+        Overview:
+        ---------
+        To enhance user experience and flexibility in loading the BPE file, this function 
+        now directly accepts BPE binary data. This makes it feasible to obtain the BPE data 
+        from various sources, such as from an online URL, local storage, or even directly 
+        from memory, without the need to specify paths or URLs.
+
+        Changes Made:
+        -------------
+        1. The function now accepts `bpe_binary` which is the raw binary data of the BPE file.
+        2. Removed the need to fetch or open any files, as the binary data is directly processed.
+
+        Why the Change:
+        ---------------
+        This modification brings added flexibility to how the `image_bind` module is initialized. 
+        By allowing direct input of BPE binary data:
+
+        - We eliminate path or URL dependencies.
+        - Users can load BPE data from multiple sources without restructuring.
+        - The module becomes more versatile and adaptable to different use-cases.
+
+        Parameters:
+        - bpe_binary (bytes): The binary data of the BPE file.
+        - context_length (int, optional): Some context related parameter. Defaults to 77.
+        """
         self.byte_encoder = bytes_to_unicode()
         self.byte_decoder = {v: k for k, v in self.byte_encoder.items()}
 
-        with g_pathmgr.open(bpe_path, "rb") as fh:
-            bpe_bytes = io.BytesIO(fh.read())
-            merges: List[str] = gzip.open(bpe_bytes).read().decode("utf-8").split("\n")
+        bpe_bytes = io.BytesIO(bpe_binary)
+        merges: List[str] = gzip.open(bpe_bytes).read().decode("utf-8").split("\n")
         merges = merges[1 : 49152 - 256 - 2 + 1]
         merges: List[Tuple[str, ...]] = [tuple(merge.split()) for merge in merges]
         vocab = list(bytes_to_unicode().values())
