@@ -7,6 +7,7 @@
 
 import logging
 import math
+import io
 
 import torch
 import torch.nn as nn
@@ -99,6 +100,53 @@ def load_and_transform_vision_data(image_paths, device):
     return torch.stack(image_outputs, dim=0)
 
 
+def load_and_transform_vision_data_from_binary(image_binaries, device):
+    """
+    Transforms a list of image binaries into a tensor ready for model consumption.
+    
+    Parameters:
+    - image_binaries (List[bytes]): Each byte sequence should represent an individual image. 
+                                   Previously, this function accepted file paths; now it directly 
+                                   takes binary data, removing the need for file I/O.
+    - device (torch.device): The device to which the processed image tensors should be moved 
+                             before returning.
+    
+    Returns:
+    torch.Tensor: A PyTorch tensor stacked along the zeroth dimension representing the batch 
+                  of processed images. Each image is resized, center-cropped, converted to tensor 
+                  format, and normalized.
+    
+    Notes:
+    The change in this function's design streamlines the processing flow by eliminating the 
+    need for disk reads. This can be particularly useful for scenarios where image data is 
+    being streamed or is already available in-memory.
+    """
+    if image_binaries is None or len(image_binaries) == 0:
+        return None
+
+    image_outputs = []
+    data_transform = transforms.Compose(
+        [
+            transforms.Resize(
+                224, interpolation=transforms.InterpolationMode.BICUBIC
+            ),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=(0.48145466, 0.4578275, 0.40821073),
+                std=(0.26862954, 0.26130258, 0.27577711),
+            ),
+        ]
+    )
+
+    for image_binary in image_binaries:
+        image = Image.open(io.BytesIO(image_binary)).convert("RGB")
+        image = data_transform(image).to(device)
+        image_outputs.append(image)
+    return torch.stack(image_outputs, dim=0)
+
+
+
 def load_and_transform_text(text, device, bpe_path):
     if text is None:
         return None
@@ -156,6 +204,77 @@ def load_and_transform_audio_data(
         audio_outputs.append(all_clips)
 
     return torch.stack(audio_outputs, dim=0)
+
+
+
+def load_and_transform_audio_data_from_binary(
+    audio_binaries,
+    device,
+    num_mel_bins=128,
+    target_length=204,
+    sample_rate=16000,
+    clip_duration=2,
+    clips_per_video=3,
+    mean=-4.268,
+    std=9.138,
+):
+    """
+    Transforms a list of audio binaries into a tensor ready for model consumption, incorporating
+    necessary audio processing such as resampling and mel-spectrogram transformation.
+
+    Parameters:
+    - audio_binaries (List[bytes]): Each byte sequence should represent an individual audio clip. 
+                                   Unlike the older version that required file paths, this revamped 
+                                   function accepts the binary data directly.
+    - device (torch.device): The device to which the processed audio tensors should be moved 
+                             before returning.
+
+    Returns:
+    torch.Tensor: A PyTorch tensor stacked along the zeroth dimension representing the batch 
+                  of processed audio clips after the necessary transformations.
+
+    Notes:
+    By working directly with binary data, this function provides a more streamlined approach 
+    when the audio data is being streamed or already in-memory, avoiding the need for disk reads.
+    """
+    if audio_binaries is None or len(audio_binaries) == 0:
+        return None
+
+    audio_outputs = []
+    clip_sampler = ConstantClipsPerVideoSampler(
+        clip_duration=clip_duration, clips_per_video=clips_per_video
+    )
+
+    for audio_binary in audio_binaries:
+        waveform, sr = torchaudio.load(io.BytesIO(audio_binary))
+        if sample_rate != sr:
+            waveform = torchaudio.functional.resample(
+                waveform, orig_freq=sr, new_freq=sample_rate
+            )
+        all_clips_timepoints = get_clip_timepoints(
+            clip_sampler, waveform.size(1) / sample_rate
+        )
+        all_clips = []
+        for clip_timepoints in all_clips_timepoints:
+            waveform_clip = waveform[
+                :,
+                int(clip_timepoints[0] * sample_rate) : int(
+                    clip_timepoints[1] * sample_rate
+                ),
+            ]
+            waveform_melspec = waveform2melspec(
+                waveform_clip, sample_rate, num_mel_bins, target_length
+            )
+            all_clips.append(waveform_melspec)
+
+        normalize = transforms.Normalize(mean=mean, std=std)
+        all_clips = [normalize(ac).to(device) for ac in all_clips]
+
+        all_clips = torch.stack(all_clips, dim=0)
+        audio_outputs.append(all_clips)
+
+    return torch.stack(audio_outputs, dim=0)
+
 
 
 def crop_boxes(boxes, x_offset, y_offset):
