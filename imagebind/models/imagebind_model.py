@@ -582,7 +582,7 @@ class SerializableImageBindModel(ImageBindModel):
     
     def forward(self, json_serializable_input: dict[str, ...]):
         self.validate_serializable_input(json_serializable_input)
-        torch_inputs = self.format_input(json_serializable_input)
+        torch_inputs = self.format_input_to_torch(json_serializable_input)
         return super().forward(torch_inputs)
         
 
