@@ -477,8 +477,9 @@ class ImageBindModel(nn.Module):
         return outputs
     
 class SerializableImageBindModel(ImageBindModel):
-    def __init__(self, device, **kwargs):
+    def __init__(self, device, bpe_path, **kwargs):
         self._device = device
+        self._bpe_path = bpe_path
         super().__init__(**kwargs)
         
     def validate_serializable_input(self, model_input: dict) -> None:
@@ -567,7 +568,7 @@ class SerializableImageBindModel(ImageBindModel):
         # TODO: Support for THERMAL, DEPTH, IMU
         if "text" in model_input:
             inputs[ModalityType.TEXT] = load_and_transform_text(
-                model_input['text'], self._device
+                model_input['text'], self._device, bpe_path=self._bpe_path
             )
         if "vision" in model_input:
             inputs[ModalityType.VISION] = load_and_transform_vision_data_from_binary(
@@ -615,12 +616,13 @@ def imagebind_huge(pretrained=False):
 
     return model
 
-def imagebind_huge_serializable(device=None, pretrained=False):
+def imagebind_huge_serializable(device=None, bpe_path=None, pretrained=False):
     if not device:
         device = "cuda:0" if torch.cuda.is_available() else "cpu"
     
     model = SerializableImageBindModel(
         device=device,
+        bpe_path=bpe_path,
         vision_embed_dim=1280,
         vision_num_blocks=32,
         vision_num_heads=16,
