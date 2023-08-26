@@ -24,6 +24,8 @@ from imagebind.models.multimodal_preprocessors import (AudioPreprocessor,
                                              ThermalPreprocessor)
 from imagebind.models.transformer import MultiheadAttention, SimpleTransformer
 
+from ..data import load_and_transform_text, load_and_transform_vision_data_from_binary, load_and_transform_audio_data_from_binary
+
 ModalityType = SimpleNamespace(
     VISION="vision",
     TEXT="text",
@@ -32,7 +34,6 @@ ModalityType = SimpleNamespace(
     DEPTH="depth",
     IMU="imu",
 )
-
 
 class ImageBindModel(nn.Module):
     def __init__(
@@ -474,7 +475,116 @@ class ImageBindModel(nn.Module):
                 outputs[modality_key] = modality_value
 
         return outputs
+    
+class SerializableImageBindModel(ImageBindModel):
+    def __init__(self, device, **kwargs):
+        self._device = device
+        super().__init__(**kwargs)
+        
+    def validate_serializable_input(self, model_input: dict) -> None:
+        """
+        Validates the format of the provided model_input dictionary.
 
+        The dictionary should be JSON-serializable and can contain any combination of the following keys:
+        - `text`: representing a list of strings.
+        - `vision`: representing a list of binaries (images).
+        - `audio`: representing a list of binaries (audio clips).
+
+        Parameters:
+        - model_input (dict): The input data to be validated.
+
+        Raises:
+        Exception: If the model_input is not in the correct format.
+        """
+
+        if not isinstance(model_input, dict):
+            raise Exception("model_input must be a dictionary.")
+
+        valid_keys = [ModalityType.TEXT, ModalityType.VISION, ModalityType.AUDIO]
+
+        # Check for invalid keys
+        for key in model_input.keys():
+            if key not in valid_keys:
+                raise Exception(f"Invalid key '{key}' in model_input. Expected keys are: {valid_keys}")
+            
+        # Check types of values
+        if ModalityType.TEXT in model_input and not all(isinstance(item, str) for item in model_input[ModalityType.TEXT]):
+            raise Exception("Values for the 'text' key should be a list of strings.")
+
+        if ModalityType.VISION in model_input and not all(isinstance(item, (bytes, bytearray)) for item in model_input[ModalityType.VISION]):
+            raise Exception("Values for the 'vision' key should be a list of binaries (image data).")
+
+        if ModalityType.AUDIO in model_input and not all(isinstance(item, (bytes, bytearray)) for item in model_input[ModalityType.AUDIO]):
+            raise Exception("Values for the 'audio' key should be a list of binaries (audio data).")
+        
+    def format_input_to_torch(self, model_input):
+        """
+        Format the given model input to be suitable for further processing.
+
+        The `model_input` must be a JSON-serializable dictionary with 
+        potential keys:
+        - `text`: representing a list of strings.
+        - `vision`: representing a list of binaries (images).
+        - `audio`: representing a list of binaries (audio clips).
+
+        The function transforms the provided input data and returns a 
+        dictionary with corresponding modality types.
+
+        NOTE: In future versions, support for THERMAL, DEPTH, and IMU 
+        is planned.
+
+        Parameters:
+        - model_input (dict): The input data in a dictionary format. 
+            It should have the structure:
+            {
+                "text": [<list of strings>],
+                "vision": [<list of image binaries>],
+                "audio": [<list of audio binaries>]
+            }
+        
+        Returns:
+        dict: A dictionary with keys mapped to ModalityType enum and 
+            values as the transformed data ready for processing.
+
+        Example:
+        Given:
+            model_input = {
+                "text": ["Hello, world!"],
+                "vision": [<binary image data>],
+                "audio": [<binary audio data>]
+            }
+        
+        Returns:
+            {
+                ModalityType.TEXT: <transformed text data>,
+                ModalityType.VISION: <transformed vision data>,
+                ModalityType.AUDIO: <transformed audio data>
+            }
+        """
+
+        inputs = {}
+
+        # TODO: Support for THERMAL, DEPTH, IMU
+        if "text" in model_input:
+            inputs[ModalityType.TEXT] = load_and_transform_text(
+                model_input['text'], self._device
+            )
+        if "vision" in model_input:
+            inputs[ModalityType.VISION] = load_and_transform_vision_data_from_binary(
+                model_input['vision'], self._device
+            )
+        if "audio" in model_input:
+            inputs[ModalityType.AUDIO] = load_and_transform_audio_data_from_binary(
+                model_input['audio'], self._device
+            )
+
+        return inputs
+    
+    def forward(self, json_serializable_input: dict[str, ...]):
+        self.validate_serializable_input(json_serializable_input)
+        torch_inputs = self.format_input(json_serializable_input)
+        return super().forward(torch_inputs)
+        
 
 def imagebind_huge(pretrained=False):
     model = ImageBindModel(
@@ -503,4 +613,38 @@ def imagebind_huge(pretrained=False):
 
         model.load_state_dict(torch.load(".checkpoints/imagebind_huge.pth"))
 
+    return model
+
+def imagebind_huge_serializable(device=None, pretrained=False):
+    if not device:
+        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    
+    model = SerializableImageBindModel(
+        device=device,
+        vision_embed_dim=1280,
+        vision_num_blocks=32,
+        vision_num_heads=16,
+        text_embed_dim=1024,
+        text_num_blocks=24,
+        text_num_heads=16,
+        out_embed_dim=1024,
+        audio_drop_path=0.1,
+        imu_drop_path=0.7,
+    )
+
+    if pretrained:
+        if not os.path.exists(".checkpoints/imagebind_huge.pth"):
+            print(
+                "Downloading imagebind weights to .checkpoints/imagebind_huge.pth ..."
+            )
+            os.makedirs(".checkpoints", exist_ok=True)
+            torch.hub.download_url_to_file(
+                "https://dl.fbaipublicfiles.com/imagebind/imagebind_huge.pth",
+                ".checkpoints/imagebind_huge.pth",
+                progress=True,
+            )
+
+        model.load_state_dict(torch.load(".checkpoints/imagebind_huge.pth"))
+
+    model.to(device)
     return model
