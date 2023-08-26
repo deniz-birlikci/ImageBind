@@ -8,6 +8,7 @@
 import logging
 import math
 import io
+import requests
 
 import torch
 import torch.nn as nn
@@ -18,10 +19,34 @@ from pytorchvideo.data.clip_sampling import ConstantClipsPerVideoSampler
 from pytorchvideo.data.encoded_video import EncodedVideo
 from torchvision import transforms
 from torchvision.transforms._transforms_video import NormalizeVideo
+from typing import Optional
 
 from imagebind.models.multimodal_preprocessors import SimpleTokenizer
 
 DEFAULT_AUDIO_FRAME_SHIFT_MS = 10  # in milliseconds
+
+BPE_URL = "https://github.com/deniz-birlikci/JSON-Serializable-ImageBind/blob/f0cc9afd238b92d34623bc8bc771dca2818ddcc4/bpe/bpe_simple_vocab_16e6.txt.gz"
+
+def fetch_bpe_binary(bpe_path: Optional[str] = None) -> bytes:
+    """
+    Fetch the BPE binary either from a local path or from the default BPE_URL.
+
+    Parameters:
+    -----------
+    bpe_path (str, optional): Path to the local BPE file.
+
+    Returns:
+    --------
+    bytes: BPE binary data.
+    """
+    
+    if bpe_path:
+        with open(bpe_path, 'rb') as f:
+            return f.read()
+    else:
+        response = requests.get(BPE_URL)
+        response.raise_for_status()
+        return response.content
 
 def waveform2melspec(waveform, sample_rate, num_mel_bins, target_length):
     # Based on https://github.com/YuanGongND/ast/blob/d7d8b4b8e06cdaeb6c843cdb38794c1c7692234c/src/dataloader.py#L102
@@ -147,10 +172,37 @@ def load_and_transform_vision_data_from_binary(image_binaries, device):
 
 
 
-def load_and_transform_text(text, device, bpe_path):
+def load_and_transform_text(text, device, bpe_path=None):
+    """
+    Load and transform the text using BPE encoding.
+
+    This function has been updated to be more versatile in handling the BPE (Byte Pair Encoding) source.
+    Instead of relying solely on a local path for the BPE file, it now supports two scenarios:
+
+    1. If a `bpe_path` is provided, it will load the BPE binary from that path.
+    2. If no `bpe_path` is given, it fetches the BPE data from a default online URL (`BPE_URL`).
+    
+    This change simplifies the setup for the user, allowing for more flexibility and eliminating the need 
+    for manual file management. If the user has the BPE file locally, they can provide the path, but if 
+    they don't, the system can automatically fetch and use it from a predefined online source.
+
+    Parameters:
+    -----------
+    text (list[str]): List of text strings to transform.
+    device (str): The device where the tensors should reside.
+    bpe_path (str, optional): Local path to the BPE file. If not provided, the default BPE_URL will be used.
+
+    Returns:
+    --------
+    torch.Tensor: Transformed text in tensor format.
+    """
+    
     if text is None:
         return None
-    tokenizer = SimpleTokenizer(bpe_path=bpe_path)
+
+    bpe_binary = fetch_bpe_binary(bpe_path)
+    tokenizer = SimpleTokenizer(bpe_binary=bpe_binary)
+    
     tokens = [tokenizer(t).unsqueeze(0).to(device) for t in text]
     tokens = torch.cat(tokens, dim=0)
     return tokens
