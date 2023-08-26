@@ -7,50 +7,49 @@ This repository introduces an enhancement to the ImageBind model by allowing it 
 To make this seamless, we've introduced two functions that convert image and audio paths to their corresponding binary formats:
 
 ```python
+import base64
 from PIL import Image
+from pydub import AudioSegment
 import io
 
-def image_paths_to_binaries(image_paths: list[str]) -> list[bytes]:
+def image_paths_to_base64_strings(image_paths: list[str]) -> list[str]:
     """
-    Convert a list of image paths to a list of image binaries.
+    Convert a list of image paths to a list of Base64 encoded strings.
 
     Parameters:
     - image_paths (list[str]): List of paths to the images.
 
     Returns:
-    list[bytes]: List containing binary data of images.
+    list[str]: List containing Base64 encoded strings of images.
     """
-
-    image_binaries = []
+    image_base64_strings = []
     for path in image_paths:
         with Image.open(path) as img:
             binary_io = io.BytesIO()
             img.save(binary_io, format="PNG")  # You can change the format if needed
-            image_binaries.append(binary_io.getvalue())
-    return image_binaries
+            base64_encoded = base64.b64encode(binary_io.getvalue()).decode('utf-8')
+            image_base64_strings.append(base64_encoded)
+    return image_base64_strings
 
-
-from pydub import AudioSegment
-import io
-
-def audio_paths_to_binaries(audio_paths: list[str]) -> list[bytes]:
+def audio_paths_to_base64_strings(audio_paths: list[str]) -> list[str]:
     """
-    Convert a list of audio paths to a list of audio binaries.
+    Convert a list of audio paths to a list of Base64 encoded strings.
 
     Parameters:
     - audio_paths (list[str]): List of paths to the audio files.
 
     Returns:
-    list[bytes]: List containing binary data of audio files.
+    list[str]: List containing Base64 encoded strings of audio files.
     """
 
-    audio_binaries = []
+    audio_base64_strings = []
     for path in audio_paths:
         audio = AudioSegment.from_file(path)
         binary_io = io.BytesIO()
         audio.export(binary_io, format="wav")  # You can change the format if needed
-        audio_binaries.append(binary_io.getvalue())
-    return audio_binaries
+        base64_encoded = base64.b64encode(binary_io.getvalue()).decode('utf-8')
+        audio_base64_strings.append(base64_encoded)
+    return audio_base64_strings
 ```
 
 ## How to run the model
@@ -65,13 +64,13 @@ model = imagebind_model.imagebind_huge_serializable(device=device, pretrained=Tr
                                                     bpe_path="/content/bpe/bpe_simple_vocab_16e6.txt.gz")
 
 text_list = ["coastal outfits for the summer"]
-image_paths = ["/content/lulu-dress.jpeg"]
-audio_paths = ["/content/ocean-waves-112906.mp3"]
+image_paths = ["testing_data/coastal-dress.jpeg"]
+audio_paths = ["testing_data/ocean-waves-112906.mp3"]
 
 json_serializable_input = {
     "text" : text_list,
-    "vision" : image_paths_to_binaries(image_paths),
-    "audio" : audio_paths_to_binaries(audio_paths)
+    "vision" : image_paths_to_base64_strings(image_paths),
+    "audio" : audio_paths_to_base64_strings(audio_paths)
 }
 
 model(json_serializable_input)

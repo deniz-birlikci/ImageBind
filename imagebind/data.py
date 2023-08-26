@@ -9,6 +9,7 @@ import logging
 import math
 import io
 import requests
+import base64
 
 import torch
 import torch.nn as nn
@@ -125,14 +126,13 @@ def load_and_transform_vision_data(image_paths, device):
     return torch.stack(image_outputs, dim=0)
 
 
-def load_and_transform_vision_data_from_binary(image_binaries, device):
+def load_and_transform_vision_data_from_binary(image_base64_strings, device):
     """
-    Transforms a list of image binaries into a tensor ready for model consumption.
+    Transforms a list of image Base64 encoded strings into a tensor ready for model consumption.
     
     Parameters:
-    - image_binaries (List[bytes]): Each byte sequence should represent an individual image. 
-                                   Previously, this function accepted file paths; now it directly 
-                                   takes binary data, removing the need for file I/O.
+    - image_base64_strings (List[str]): Each string should represent the Base64 encoded data 
+                                        of an individual image.
     - device (torch.device): The device to which the processed image tensors should be moved 
                              before returning.
     
@@ -142,11 +142,12 @@ def load_and_transform_vision_data_from_binary(image_binaries, device):
                   format, and normalized.
     
     Notes:
-    The change in this function's design streamlines the processing flow by eliminating the 
-    need for disk reads. This can be particularly useful for scenarios where image data is 
-    being streamed or is already available in-memory.
+    By directly working with Base64 encoded strings, this function streamlines the processing 
+    flow by avoiding disk reads. This design can be especially useful in scenarios where image 
+    data is being streamed or is already available in-memory.
     """
-    if image_binaries is None or len(image_binaries) == 0:
+    
+    if image_base64_strings is None or len(image_base64_strings) == 0:
         return None
 
     image_outputs = []
@@ -164,7 +165,8 @@ def load_and_transform_vision_data_from_binary(image_binaries, device):
         ]
     )
 
-    for image_binary in image_binaries:
+    for image_base64_string in image_base64_strings:
+        image_binary = base64.b64decode(image_base64_string)
         image = Image.open(io.BytesIO(image_binary)).convert("RGB")
         image = data_transform(image).to(device)
         image_outputs.append(image)
@@ -260,7 +262,7 @@ def load_and_transform_audio_data(
 
 
 def load_and_transform_audio_data_from_binary(
-    audio_binaries,
+    audio_base64_strings,
     device,
     num_mel_bins=128,
     target_length=204,
@@ -271,13 +273,12 @@ def load_and_transform_audio_data_from_binary(
     std=9.138,
 ):
     """
-    Transforms a list of audio binaries into a tensor ready for model consumption, incorporating
-    necessary audio processing such as resampling and mel-spectrogram transformation.
+    Transforms a list of audio Base64 encoded strings into a tensor ready for model consumption,
+    incorporating necessary audio processing such as resampling and mel-spectrogram transformation.
 
     Parameters:
-    - audio_binaries (List[bytes]): Each byte sequence should represent an individual audio clip. 
-                                   Unlike the older version that required file paths, this revamped 
-                                   function accepts the binary data directly.
+    - audio_base64_strings (List[str]): Each string should represent the Base64 encoded data 
+                                        of an individual audio clip.
     - device (torch.device): The device to which the processed audio tensors should be moved 
                              before returning.
 
@@ -286,10 +287,12 @@ def load_and_transform_audio_data_from_binary(
                   of processed audio clips after the necessary transformations.
 
     Notes:
-    By working directly with binary data, this function provides a more streamlined approach 
-    when the audio data is being streamed or already in-memory, avoiding the need for disk reads.
+    This function directly accepts the Base64 encoded data, providing a more streamlined 
+    approach when the audio data is being streamed or already in-memory, avoiding the need 
+    for disk reads.
     """
-    if audio_binaries is None or len(audio_binaries) == 0:
+    
+    if audio_base64_strings is None or len(audio_base64_strings) == 0:
         return None
 
     audio_outputs = []
@@ -297,7 +300,8 @@ def load_and_transform_audio_data_from_binary(
         clip_duration=clip_duration, clips_per_video=clips_per_video
     )
 
-    for audio_binary in audio_binaries:
+    for audio_base64_string in audio_base64_strings:
+        audio_binary = base64.b64decode(audio_base64_string)
         waveform, sr = torchaudio.load(io.BytesIO(audio_binary))
         if sample_rate != sr:
             waveform = torchaudio.functional.resample(

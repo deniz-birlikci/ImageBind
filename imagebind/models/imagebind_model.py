@@ -476,11 +476,21 @@ class ImageBindModel(nn.Module):
 
         return outputs
     
+import base64
+
 class SerializableImageBindModel(ImageBindModel):
     def __init__(self, device, bpe_path, **kwargs):
         self._device = device
         self._bpe_path = bpe_path
         super().__init__(**kwargs)
+
+    def _is_valid_base64_string(self, s: str) -> bool:
+        """Checks if a string is a valid Base64 encoded string."""
+        try:
+            base64.b64decode(s, validate=True)
+            return True
+        except Exception:
+            return False
         
     def validate_serializable_input(self, model_input: dict) -> None:
         """
@@ -488,14 +498,14 @@ class SerializableImageBindModel(ImageBindModel):
 
         The dictionary should be JSON-serializable and can contain any combination of the following keys:
         - `text`: representing a list of strings.
-        - `vision`: representing a list of binaries (images).
-        - `audio`: representing a list of binaries (audio clips).
+        - `vision`: representing a list of Base64 encoded strings (images).
+        - `audio`: representing a list of Base64 encoded strings (audio clips).
 
         Parameters:
         - model_input (dict): The input data to be validated.
 
         Raises:
-        Exception: If the model_input is not in the correct format.
+        Exception: If the model_input is not in the correct format or contains invalid Base64 strings.
         """
 
         if not isinstance(model_input, dict):
@@ -507,16 +517,23 @@ class SerializableImageBindModel(ImageBindModel):
         for key in model_input.keys():
             if key not in valid_keys:
                 raise Exception(f"Invalid key '{key}' in model_input. Expected keys are: {valid_keys}")
-            
+
         # Check types of values
         if ModalityType.TEXT in model_input and not all(isinstance(item, str) for item in model_input[ModalityType.TEXT]):
             raise Exception("Values for the 'text' key should be a list of strings.")
 
-        if ModalityType.VISION in model_input and not all(isinstance(item, (bytes, bytearray)) for item in model_input[ModalityType.VISION]):
-            raise Exception("Values for the 'vision' key should be a list of binaries (image data).")
+        if ModalityType.VISION in model_input:
+            if not all(isinstance(item, str) for item in model_input[ModalityType.VISION]):
+                raise Exception("Values for the 'vision' key should be strings.")
+            if not all(self._is_valid_base64_string(item) for item in model_input[ModalityType.VISION]):
+                raise Exception("All values for the 'vision' key should be valid Base64 encoded strings.")
 
-        if ModalityType.AUDIO in model_input and not all(isinstance(item, (bytes, bytearray)) for item in model_input[ModalityType.AUDIO]):
-            raise Exception("Values for the 'audio' key should be a list of binaries (audio data).")
+        if ModalityType.AUDIO in model_input:
+            if not all(isinstance(item, str) for item in model_input[ModalityType.AUDIO]):
+                raise Exception("Values for the 'audio' key should be strings.")
+            if not all(self._is_valid_base64_string(item) for item in model_input[ModalityType.AUDIO]):
+                raise Exception("All values for the 'audio' key should be valid Base64 encoded strings.")
+
         
     def format_input_to_torch(self, model_input):
         """
